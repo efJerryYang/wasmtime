@@ -1,0 +1,13 @@
+test optimize
+set opt_level=speed
+target x86_64
+
+function %fold_iadd_i32() -> i32 {
+block0:
+    v0 = iconst.i32 5
+    v1 = iconst.i32 7
+    v2 = iadd v0, v1
+    return v2
+    ; check: v3 = iconst.i32 12
+    ; check: return v3
+}
