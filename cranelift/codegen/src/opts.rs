@@ -2,6 +2,7 @@
 
 mod div_const;
 
+use crate::data_value::DataValue;
 use crate::egraph::{NewOrExistingInst, OptimizeCtx};
 pub use crate::ir::condcodes::{FloatCC, IntCC};
 use crate::ir::dfg::ValueDef;
@@ -365,5 +366,90 @@ impl<'a, 'b, 'c> generated_code::Context for IsleContext<'a, 'b, 'c> {
             mul_by,
             shift_by: shift_by.try_into().unwrap(),
         }
+    }
+
+    fn data_value_from_i64(&mut self, val: Imm64) -> DataValue {
+        DataValue::I64(val.bits())
+    }
+
+    fn data_value_from_f16(&mut self, val: Ieee16) -> DataValue {
+        DataValue::F16(val)
+    }
+
+    fn data_value_from_f32(&mut self, val: Ieee32) -> DataValue {
+        DataValue::F32(val)
+    }
+
+    fn data_value_from_f64(&mut self, val: Ieee64) -> DataValue {
+        DataValue::F64(val)
+    }
+
+    fn data_value_to_i64(&mut self, val: DataValue) -> Imm64 {
+        let bits = match val {
+            DataValue::I8(v) => v as i64,
+            DataValue::I16(v) => v as i64,
+            DataValue::I32(v) => v as i64,
+            DataValue::I64(v) => v,
+            DataValue::I128(v) => v as i64,
+            _ => unreachable!(),
+        };
+        Imm64::new(bits)
+    }
+
+    fn data_value_to_f16(&mut self, val: DataValue) -> Ieee16 {
+        match val {
+            DataValue::F16(v) => v,
+            _ => unreachable!(),
+        }
+    }
+
+    fn data_value_to_f32(&mut self, val: DataValue) -> Ieee32 {
+        match val {
+            DataValue::F32(v) => v,
+            _ => unreachable!(),
+        }
+    }
+
+    fn data_value_to_f64(&mut self, val: DataValue) -> Ieee64 {
+        match val {
+            DataValue::F64(v) => v,
+            _ => unreachable!(),
+        }
+    }
+
+    fn data_value_to_vec(&mut self, ty: Type, val: DataValue) -> Constant {
+        let lane_ty = ty.lane_type();
+        let lane_sz = (lane_ty.bits() / 8) as usize;
+
+        let mut buf = [0u8; 8];
+        let to_copy = match (lane_ty, val) {
+            (ty, val) if ty.is_int() => {
+                let bits = self.data_value_to_i64(val);
+                let masked = (bits.bits() as u64) & self.ty_mask(ty);
+                buf[..lane_sz].copy_from_slice(&masked.to_le_bytes()[..lane_sz]);
+                &buf[..lane_sz]
+            }
+            (F16, DataValue::F16(v)) => {
+                buf[..2].copy_from_slice(&v.bits().to_le_bytes());
+                &buf[..2]
+            }
+            (F32, DataValue::F32(v)) => {
+                buf[..4].copy_from_slice(&v.bits().to_le_bytes());
+                &buf[..4]
+            }
+            (F64, DataValue::F64(v)) => {
+                buf[..8].copy_from_slice(&v.bits().to_le_bytes());
+                &buf[..8]
+            }
+            _ => unreachable!(),
+        };
+
+        let mut bytes = [0u8; 16];
+        for chunk in bytes.chunks_mut(lane_sz) {
+            chunk.copy_from_slice(to_copy);
+        }
+
+        let imm = V128Imm(bytes);
+        self.ctx.func.dfg.constants.insert(imm.into())
     }
 }

@@ -154,14 +154,47 @@
     (iconst ty (imm64 c)))
 (rule 1 (iconst_u $I128 c) (uextend $I128 (iconst_u $I64 c)))
 
-;; Constructs a constant value node from a 64-bit immediate, adapting it
+(type DataValue (primitive DataValue))
+
+;; DataValue constructors used by the mid-end.
+(decl cval_i64 (Imm64) DataValue)
+(extern constructor cval_i64 data_value_from_i64)
+(decl cval_f16 (Ieee16) DataValue)
+(extern constructor cval_f16 data_value_from_f16)
+(decl cval_f32 (Ieee32) DataValue)
+(extern constructor cval_f32 data_value_from_f32)
+(decl cval_f64 (Ieee64) DataValue)
+(extern constructor cval_f64 data_value_from_f64)
+
+;; DataValue extractors.
+(decl pure data_value_to_i64 (DataValue) Imm64)
+(extern constructor data_value_to_i64 data_value_to_i64)
+(decl pure data_value_to_f16 (DataValue) Ieee16)
+(extern constructor data_value_to_f16 data_value_to_f16)
+(decl pure data_value_to_f32 (DataValue) Ieee32)
+(extern constructor data_value_to_f32 data_value_to_f32)
+(decl pure data_value_to_f64 (DataValue) Ieee64)
+(extern constructor data_value_to_f64 data_value_to_f64)
+(decl pure data_value_to_vec (Type DataValue) Constant)
+(extern constructor data_value_to_vec data_value_to_vec)
+
+;; Constructs a constant value node from the provided payload, adapting it
 ;; to the specified type. For 128-bit integers, the immediate is zero-extended;
 ;; for other integer types, a direct iconst is generated; and for vector types,
 ;; the constant is splatted across all lanes.
-(decl const (Type Imm64) Value)
-(rule 2 (const $I128 n) (uextend $I128 (iconst $I64 n)))
-(rule 1 (const (ty_int ty) n) (iconst ty n))
-(rule 0 (const (ty_vec ty) n) (splat ty (const (lane_type ty) n)))
+(decl const (Type DataValue) Value)
+(rule 3 (const (ty_scalar_float ty) val) (const_scalar_float ty val))
+(rule 2 (const $I128 val) (uextend $I128 (iconst $I64 (data_value_to_i64 val))))
+(rule 1 (const (ty_int ty) val) (iconst ty (data_value_to_i64 val)))
+(rule 0 (const (ty_vec128 ty) val) (const_vec128 ty val))
+
+(decl const_scalar_float (Type DataValue) Value)
+(rule 2 (const_scalar_float $F16 val) (f16const $F16 (data_value_to_f16 val)))
+(rule 1 (const_scalar_float $F32 val) (f32const $F32 (data_value_to_f32 val)))
+(rule 0 (const_scalar_float $F64 val) (f64const $F64 (data_value_to_f64 val)))
+
+(decl const_vec128 (Type DataValue) Value)
+(rule (const_vec128 ty val) (vconst ty (data_value_to_vec ty val)))
 
 ;; These take `Value`, rather than going through `inst_data_value_tupled`,
 ;; because most of the time they want to return the original `Value`, and it

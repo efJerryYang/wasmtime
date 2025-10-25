@@ -478,6 +478,16 @@ block0:
 ; check: v3 = f16const -0.0
 ; check: return v3  ; v3 = -0.0
 
+function %f16_fneg_const() -> f16 {
+block0:
+    v1 = f16const 0x1.5p2
+    v2 = fneg v1
+    return v2
+}
+
+; check: v3 = f16const -0x1.500p2
+; check: return v3  ; v3 = -0x1.500p2
+
 function %f16_fabs() -> f16 {
 block0:
     v1 = f16const -0.0
@@ -498,6 +508,17 @@ block0:
 
 ; check: v4 = f16const -NaN
 ; check: return v4  ; v4 = -NaN
+
+function %f32_add() -> f32 {
+block0:
+    v1 = f32const 0x1.000000p0
+    v2 = f32const 0x1.000000p0
+    v3 = fadd v1, v2
+    return v3
+}
+
+; check: v4 = f32const 0x1.000000p1
+; check: return v4  ; v4 = 0x1.000000p1
 
 function %f32_fadd() -> f32 {
 block0:
@@ -744,6 +765,16 @@ block0:
 ; check: v3 = f64const 0x1.4000000000000p2
 ; check: return v3  ; v3 = 0x1.4000000000000p2
 
+function %f64_sqrt_pow4() -> f64 {
+block0:
+    v1 = f64const 0x1.0000000000000p4
+    v2 = sqrt v1
+    return v2
+}
+
+; check: v3 = f64const 0x1.0000000000000p2
+; check: return v3  ; v3 = 0x1.0000000000000p2
+
 function %f64_ceil() -> f64 {
 block0:
     v1 = f64const 0x1.9p3
@@ -880,6 +911,16 @@ block0:
 
 ; check: v4 = f64const -NaN
 ; check: return v4  ; v4 = -NaN
+
+function %u64_to_f64_const() -> f64 {
+block0:
+    v1 = iconst.i64 42
+    v2 = fcvt_from_uint.f64 v1
+    return v2
+}
+
+; check: v3 = f64const 0x1.5000000000000p5
+; check: return v3  ; v3 = 0x1.5000000000000p5
 
 function %f128_fmin() -> f128 {
 block0:
