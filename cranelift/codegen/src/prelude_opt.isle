@@ -159,6 +159,16 @@
 ;; for other integer types, a direct iconst is generated; and for vector types,
 ;; the constant is splatted across all lanes.
 (decl const (Type Imm64) Value)
+(rule 2 (const $F16 n) (f16const $F16 (ieee16_from_imm64 n)))
+(rule 2 (const $F32 n) (f32const $F32 (ieee32_from_imm64 n)))
+(rule 2 (const $F64 n) (f64const $F64 (ieee64_from_imm64 n)))
+(rule 2 (const $I8X16 n) (vconst $I8X16 (splat8 (u64_uextend_imm64 $I8  n))))
+(rule 2 (const $I16X8 n) (vconst $I16X8 (splat16 (u64_uextend_imm64 $I16 n))))
+(rule 2 (const $I32X4 n) (vconst $I32X4 (splat32 (u64_uextend_imm64 $I32 n))))
+(rule 2 (const $I64X2 n) (vconst $I64X2 (splat64 (u64_uextend_imm64 $I64 n))))
+(rule 2 (const $F16X8 n) (vconst $F16X8 (splat16 (u64_uextend_imm64 $I16 n))))
+(rule 2 (const $F32X4 n) (vconst $F32X4 (splat32 (u64_uextend_imm64 $I32 n))))
+(rule 2 (const $F64X2 n) (vconst $F64X2 (splat64 (u64_uextend_imm64 $I64 n))))
 (rule 2 (const $I128 n) (uextend $I128 (iconst $I64 n)))
 (rule 1 (const (ty_int ty) n) (iconst ty n))
 (rule 0 (const (ty_vec ty) n) (splat ty (const (lane_type ty) n)))

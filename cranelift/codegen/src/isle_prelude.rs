@@ -557,6 +557,21 @@ macro_rules! isle_common_prelude_methods {
             val
         }
 
+        #[inline]
+        fn ieee16_from_imm64(&mut self, val: Imm64) -> Ieee16 {
+            Ieee16::with_bits(val.bits() as u16)
+        }
+
+        #[inline]
+        fn ieee32_from_imm64(&mut self, val: Imm64) -> Ieee32 {
+            Ieee32::with_bits(val.bits() as u32)
+        }
+
+        #[inline]
+        fn ieee64_from_imm64(&mut self, val: Imm64) -> Ieee64 {
+            Ieee64::with_bits(val.bits() as u64)
+        }
+
         fn not_vec32x2(&mut self, ty: Type) -> Option<Type> {
             if ty.lane_bits() == 32 && ty.lane_count() == 2 {
                 None

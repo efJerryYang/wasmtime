@@ -224,19 +224,20 @@
 
 ;; A splat of a constant can become a direct `vconst` with the appropriate bit
 ;; pattern.
-; TODO: replace vconst splat lines with `(subsume (const dst n)))`
 (rule (simplify (splat (ty_vec128 dst) (iconst $I8 n)))
-      (vconst dst (splat8 (u64_uextend_imm64 $I8 n))))
+      (subsume (const dst n)))
 (rule (simplify (splat (ty_vec128 dst) (iconst $I16 n)))
-      (vconst dst (splat16 (u64_uextend_imm64 $I16 n))))
+      (subsume (const dst n)))
 (rule (simplify (splat (ty_vec128 dst) (iconst $I32 n)))
-      (vconst dst (splat32 (u64_uextend_imm64 $I32 n))))
+      (subsume (const dst n)))
 (rule (simplify (splat (ty_vec128 dst) (iconst $I64 n)))
-      (vconst dst (splat64 (u64_uextend_imm64 $I64 n))))
+      (subsume (const dst n)))
+(rule (simplify (splat (ty_vec128 dst) (f16const _ (u16_from_ieee16 n))))
+      (subsume (const dst (imm64 n))))
 (rule (simplify (splat (ty_vec128 dst) (f32const _ (u32_from_ieee32 n))))
-      (vconst dst (splat32 n)))
+      (subsume (const dst (imm64 n))))
 (rule (simplify (splat (ty_vec128 dst) (f64const _ (u64_from_ieee64 n))))
-      (vconst dst (splat64 n)))
+      (subsume (const dst (imm64 n))))
 
 (decl splat8 (u64) Constant)
 (rule (splat8 n) (splat16 (u64_or n (u64_shl n 8))))
