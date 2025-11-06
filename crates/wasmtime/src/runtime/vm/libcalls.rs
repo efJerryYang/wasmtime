@@ -1274,7 +1274,11 @@ fn new_epoch(store: &mut dyn VMStore, _instance: InstanceId) -> Result<NextEpoch
                     "cannot use `UpdateDeadline::Yield` without enabling \
                      async support in the config"
                 );
-                crate::runtime::vm::Yield::new().await;
+                if store.preemptive_enabled() {
+                    store.preemptive_yield().await?;
+                } else {
+                    crate::runtime::vm::Yield::new().await;
+                }
                 delta
             }
             #[cfg(feature = "async")]
@@ -1284,7 +1288,11 @@ fn new_epoch(store: &mut dyn VMStore, _instance: InstanceId) -> Result<NextEpoch
                     "cannot use `UpdateDeadline::YieldCustom` without enabling \
                      async support in the config"
                 );
-                future.await;
+                if store.preemptive_enabled() {
+                    store.preemptive_yield().await?;
+                } else {
+                    future.await;
+                }
                 delta
             }
         };

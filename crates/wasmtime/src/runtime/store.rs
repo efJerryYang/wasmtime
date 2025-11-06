@@ -107,6 +107,8 @@ use crate::{Engine, Module, Val, ValRaw, module::ModuleRegistry};
 #[cfg(feature = "gc")]
 use crate::{ExnRef, Rooted};
 use crate::{Global, Instance, Table, Uninhabited};
+use crate::preemptive::{PreemptiveThreads, WasmThreadHandle};
+use anyhow::ensure;
 use alloc::sync::Arc;
 use core::fmt;
 use core::marker;
@@ -506,6 +508,8 @@ pub struct StoreOpaque {
     table_limit: usize,
     #[cfg(feature = "async")]
     async_state: fiber::AsyncState,
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    preemptive_threads: PreemptiveThreads,
 
     // If fuel_yield_interval is enabled, then we store the remaining fuel (that isn't in
     // runtime_limits) here. The total amount of fuel is the runtime limits and reserve added
@@ -740,6 +744,8 @@ impl<T> Store<T> {
             table_limit: crate::DEFAULT_TABLE_LIMIT,
             #[cfg(feature = "async")]
             async_state: Default::default(),
+            #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+            preemptive_threads: PreemptiveThreads::new(1),
             fuel_reserve: 0,
             fuel_yield_interval: None,
             store_data,
@@ -825,6 +831,58 @@ impl<T> Store<T> {
     #[inline]
     pub fn data_mut(&mut self) -> &mut T {
         self.inner.data_mut()
+    }
+
+    /// Spawn a wasm export as a preemptively scheduled wasm thread.
+    ///
+    /// Currently only zero-argument, zero-result exports are supported. Requires
+    /// `Config::wasm_preemptive_threads(true)`.
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub fn spawn_wasm_thread(
+        &mut self,
+        instance: &crate::Instance,
+        export: &str,
+        params: (),
+    ) -> Result<WasmThreadHandle> {
+        ensure!(
+            self.inner.engine.config().wasm_preemptive_threads,
+            "preemptive wasm threads require Config::wasm_preemptive_threads(true)"
+        );
+        let func = instance.get_typed_func::<(), ()>(&mut *self, export)?;
+        let handle = {
+            let threads: *mut PreemptiveThreads =
+                self.inner.preemptive_threads_mut() as *mut _;
+            unsafe { (*threads).spawn(&mut self.inner, func)? }
+        };
+        // params kept for future expansion; currently only zero-arg exports.
+        let _ = params;
+        Ok(handle)
+    }
+
+    /// Run all preemptively scheduled wasm threads for up to `duration`.
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub fn run_wasm_threads_for(&mut self, duration: std::time::Duration) -> Result<()> {
+        if !self.inner.engine.config().wasm_preemptive_threads {
+            return Ok(());
+        }
+        let engine = self.inner.engine.clone();
+        let threads: *mut PreemptiveThreads =
+            self.inner.preemptive_threads_mut() as *mut _;
+        unsafe { (*threads).run_for(&mut self.inner, &engine, duration) }
+    }
+
+    /// Stop all preemptively scheduled wasm threads and dispose their fibers.
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub fn shutdown_wasm_threads(&mut self) -> Result<()> {
+        if !self.inner.engine.config().wasm_preemptive_threads {
+            return Ok(());
+        }
+        let threads: *mut PreemptiveThreads =
+            self.inner.preemptive_threads_mut() as *mut _;
+        unsafe {
+            (*threads).shutdown(&mut self.inner);
+        }
+        Ok(())
     }
 
     fn run_manual_drop_routines(&mut self) {
@@ -1599,6 +1657,15 @@ impl StoreOpaque {
     #[inline]
     pub fn async_support(&self) -> bool {
         cfg!(feature = "async") && self.engine().config().async_support
+    }
+
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub(crate) async fn preemptive_yield(&mut self) -> Result<()> {
+        if !self.preemptive_enabled() {
+            return Ok(());
+        }
+        self.with_blocking(|_, cx| cx.suspend(crate::runtime::fiber::StoreFiberYield::ReleaseStore))?;
+        Ok(())
     }
 
     #[inline]
@@ -2496,6 +2563,16 @@ at https://bytecodealliance.org/security.
         &mut self.async_state
     }
 
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub(crate) fn preemptive_threads_mut(&mut self) -> &mut PreemptiveThreads {
+        &mut self.preemptive_threads
+    }
+
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub(crate) fn preemptive_enabled(&self) -> bool {
+        self.engine().config().wasm_preemptive_threads
+    }
+
     #[cfg(feature = "component-model-async")]
     pub(crate) fn concurrent_state_mut(&mut self) -> &mut concurrent::ConcurrentState {
         &mut self.concurrent_state
@@ -2774,7 +2851,7 @@ impl<T> StoreInner<T> {
     }
 
     #[cfg(target_has_atomic = "64")]
-    fn epoch_deadline_callback(
+    pub(crate) fn epoch_deadline_callback(
         &mut self,
         callback: Box<dyn FnMut(StoreContextMut<T>) -> Result<UpdateDeadline> + Send + Sync>,
     ) {

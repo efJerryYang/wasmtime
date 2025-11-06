@@ -154,6 +154,8 @@ pub struct Config {
     #[cfg(feature = "async")]
     pub(crate) stack_creator: Option<Arc<dyn RuntimeFiberStackCreator>>,
     pub(crate) async_support: bool,
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub(crate) wasm_preemptive_threads: bool,
     pub(crate) module_version: ModuleVersionStrategy,
     pub(crate) parallel_compilation: bool,
     pub(crate) memory_guaranteed_dense_image_size: u64,
@@ -261,6 +263,8 @@ impl Config {
             #[cfg(feature = "async")]
             stack_creator: None,
             async_support: false,
+            #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+            wasm_preemptive_threads: false,
             module_version: ModuleVersionStrategy::default(),
             parallel_compilation: !cfg!(miri),
             memory_guaranteed_dense_image_size: 16 << 20,
@@ -1148,6 +1152,16 @@ impl Config {
     /// [proposal]: https://github.com/webassembly/stack-switching
     pub fn wasm_stack_switching(&mut self, enable: bool) -> &mut Self {
         self.wasm_features(WasmFeatures::STACK_SWITCHING, enable);
+        self
+    }
+
+    /// Enables experimental single-threaded preemptive scheduling of wasm
+    /// threads using Wasmtime's stack-switching runtime.
+    ///
+    /// This requires `async_support` and `epoch_interruption` to be enabled.
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub fn wasm_preemptive_threads(&mut self, enable: bool) -> &mut Self {
+        self.wasm_preemptive_threads = enable;
         self
     }
 
