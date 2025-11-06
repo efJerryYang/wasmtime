@@ -1667,7 +1667,7 @@ impl StoreOpaque {
         if !self.preemptive_enabled() {
             return Ok(());
         }
-        if self.async_state.current_future_cx.is_none() || self.async_state.current_suspend.is_none() {
+        if !self.async_state.has_current_context() {
             // If we're not currently on a fiber, don't try to suspend.
             return Ok(());
         }
