@@ -1667,7 +1667,13 @@ impl StoreOpaque {
         if !self.preemptive_enabled() {
             return Ok(());
         }
-        self.with_blocking(|_, cx| cx.suspend(crate::runtime::fiber::StoreFiberYield::ReleaseStore))?;
+        if self.async_state.current_future_cx.is_none() || self.async_state.current_suspend.is_none() {
+            // If we're not currently on a fiber, don't try to suspend.
+            return Ok(());
+        }
+        self.with_blocking(|_, cx| {
+            cx.suspend(crate::runtime::fiber::StoreFiberYield::ReleaseStore)
+        })?;
         Ok(())
     }
 
