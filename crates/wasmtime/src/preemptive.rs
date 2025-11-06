@@ -87,7 +87,7 @@ impl PreemptiveThreads {
         self.epoch_installed = true;
     }
 
-    pub(crate) fn spawn<T>(
+    pub(crate) fn spawn<T: Send + 'static>(
         &mut self,
         store: &mut crate::store::StoreInner<T>,
         func: TypedFunc<(), ()>,
@@ -99,10 +99,11 @@ impl PreemptiveThreads {
         // Run the wasm export on its own fiber; epoch-driven yields will
         // suspend the fiber with `StoreFiberYield::ReleaseStore` when
         // `wasm_preemptive_threads` is enabled.
+        let func_clone = func.clone();
         let fiber = unsafe {
             crate::runtime::fiber::make_fiber_unchecked(store, move |store| {
-                func.call(&mut StoreContextMut(store), ())?;
-                Ok(())
+                let store_ctx = StoreContextMut(store);
+                store_ctx.block_on(|mut cx| Box::pin(async move { func_clone.call_async(&mut cx, ()).await }))?
             })?
         };
 
