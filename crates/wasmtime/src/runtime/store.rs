@@ -1668,12 +1668,19 @@ impl StoreOpaque {
             return Ok(());
         }
         if !self.async_state.has_current_context() {
+            eprintln!("[preempt][yield] skipped: no current async context");
             // If we're not currently on a fiber, don't try to suspend.
             return Ok(());
         }
+        let (suspend_present, cx_present) = self.async_state.debug_flags();
+        eprintln!(
+            "[preempt][yield] suspending fiber (suspend? {} cx? {})",
+            suspend_present, cx_present
+        );
         self.with_blocking(|_, cx| {
             cx.suspend(crate::runtime::fiber::StoreFiberYield::ReleaseStore)
         })?;
+        eprintln!("[preempt][yield] resumed fiber after suspension");
         Ok(())
     }
 

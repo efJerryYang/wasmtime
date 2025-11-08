@@ -116,6 +116,14 @@ impl AsyncState {
     pub(crate) fn has_current_context(&self) -> bool {
         self.current_suspend.is_some() && self.current_future_cx.is_some()
     }
+
+    /// Debug helper for preemptive scheduler logging.
+    pub(crate) fn debug_flags(&self) -> (bool, bool) {
+        (
+            self.current_suspend.is_some(),
+            self.current_future_cx.is_some(),
+        )
+    }
 }
 
 /// A helper structure used to block a fiber.
