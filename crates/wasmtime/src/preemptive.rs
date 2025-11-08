@@ -14,10 +14,15 @@ use crate::runtime::fiber::{resume_fiber, StoreFiber, StoreFiberYield};
 use crate::runtime::store::AsStoreOpaque;
 use crate::{Engine, StoreContextMut, TypedFunc, UpdateDeadline};
 use core::mem;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ptr::NonNull;
 use std::task::Context;
 use std::time::{Duration, Instant};
+use std::thread;
 use futures::task::noop_waker;
 
 /// Opaque handle returned to the embedder for spawned wasm threads.
@@ -36,6 +41,8 @@ pub(crate) struct PreemptiveThreads {
     timeslice: u64,
     epoch_installed: bool,
     shutdown: bool,
+    ticker_stop: Option<Arc<AtomicBool>>,
+    ticker_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl PreemptiveThreads {
@@ -88,6 +95,21 @@ impl PreemptiveThreads {
             Ok(UpdateDeadline::Yield(timeslice))
         }));
         self.epoch_installed = true;
+
+        if self.ticker_handle.is_none() {
+            let stop = Arc::new(AtomicBool::new(false));
+            let stop_clone = stop.clone();
+            let engine = store.engine().clone();
+            let interval = Duration::from_millis(self.timeslice.max(1));
+            let handle = thread::spawn(move || {
+                while !stop_clone.load(Ordering::Relaxed) {
+                    engine.increment_epoch();
+                    thread::sleep(interval);
+                }
+            });
+            self.ticker_stop = Some(stop);
+            self.ticker_handle = Some(handle);
+        }
     }
 
     pub(crate) fn spawn<T: Send + 'static>(
@@ -176,6 +198,12 @@ impl PreemptiveThreads {
         self.run_queue.clear();
         self.enqueued.clear();
         self.current = None;
+        if let Some(stop) = self.ticker_stop.take() {
+            stop.store(true, Ordering::Relaxed);
+        }
+        if let Some(handle) = self.ticker_handle.take() {
+            let _ = handle.join();
+        }
     }
 
     fn finish(&mut self, id: u32) {
