@@ -58,7 +58,10 @@ impl PreemptiveThreads {
 
     pub(crate) fn on_epoch_tick(&mut self) {
         if let Some(id) = self.current.take() {
+            eprintln!("[preempt][epoch] tick: requeue current fiber {id}");
             self.enqueue(id);
+        } else {
+            eprintln!("[preempt][epoch] tick: no current fiber");
         }
     }
 
@@ -97,6 +100,8 @@ impl PreemptiveThreads {
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1);
 
+        eprintln!("[preempt][spawn] fiber {id} for export");
+
         // Run the wasm export on its own fiber; epoch-driven yields will
         // suspend the fiber with `StoreFiberYield::ReleaseStore` when
         // `wasm_preemptive_threads` is enabled.
@@ -124,12 +129,15 @@ impl PreemptiveThreads {
         let mut cx = Context::from_waker(&waker);
 
         while !self.shutdown && start.elapsed() < duration {
+            eprintln!("[preempt][run] loop tick");
             engine.increment_epoch();
 
             let Some(id) = self.pop_next() else {
+                eprintln!("[preempt][run] run queue empty");
                 break;
             };
 
+            eprintln!("[preempt][run] schedule fiber {id}");
             {
                 let fiber = self.threads.get_mut(&id).unwrap();
                 let cx_static: &mut Context<'static> = unsafe { mem::transmute(&mut cx) };
@@ -139,13 +147,16 @@ impl PreemptiveThreads {
                     Ok(NonNull::from(cx_static)),
                 ) {
                     Ok(Ok(())) => {
+                        eprintln!("[preempt][run] fiber {id} completed");
                         self.finish(id);
                     }
                     Ok(Err(err)) => {
                         log::trace!("fiber {id} returned error: {err}");
+                        eprintln!("[preempt][run] fiber {id} returned error: {err}");
                         self.finish(id);
                     }
                     Err(StoreFiberYield::KeepStore) | Err(StoreFiberYield::ReleaseStore) => {
+                        eprintln!("[preempt][run] fiber {id} yielded");
                         self.enqueue(id);
                     }
                 }
