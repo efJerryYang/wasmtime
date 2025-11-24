@@ -5,10 +5,9 @@
 //! `cargo run --example preemptive_threads_demo`
 
 use anyhow::Result;
+use futures::executor::block_on;
 use std::time::Duration;
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store, WasmThreadHandle};
-
-const MAX_LOGS_PER_THREAD: usize = 12;
 
 struct HostState;
 
@@ -32,7 +31,7 @@ fn main() -> Result<()> {
     })?;
 
     let mut store = Store::new(&engine, HostState);
-    let instance = linker.instantiate(&mut store, &module)?;
+    let instance = block_on(linker.instantiate_async(&mut store, &module))?;
 
     let _t0: WasmThreadHandle = store.spawn_wasm_thread(&instance, "thread0", ())?;
     let _t1: WasmThreadHandle = store.spawn_wasm_thread(&instance, "thread1", ())?;

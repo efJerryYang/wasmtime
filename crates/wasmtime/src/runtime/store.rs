@@ -842,7 +842,10 @@ impl<T> Store<T> {
         instance: &crate::Instance,
         export: &str,
         params: (),
-    ) -> Result<crate::preemptive::WasmThreadHandle> {
+    ) -> Result<crate::preemptive::WasmThreadHandle>
+    where
+        T: Send + 'static,
+    {
         ensure!(
             self.inner.engine.config().wasm_preemptive_threads,
             "preemptive wasm threads require Config::wasm_preemptive_threads(true)"
