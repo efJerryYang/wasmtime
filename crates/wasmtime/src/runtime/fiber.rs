@@ -111,6 +111,11 @@ impl AsyncState {
     pub(crate) fn last_fiber_stack(&mut self) -> &mut Option<wasmtime_fiber::FiberStack> {
         &mut self.last_fiber_stack
     }
+
+    /// Returns whether a fiber is currently running with valid suspend/context pointers.
+    pub(crate) fn has_current_context(&self) -> bool {
+        self.current_suspend.is_some() && self.current_future_cx.is_some()
+    }
 }
 
 /// A helper structure used to block a fiber.

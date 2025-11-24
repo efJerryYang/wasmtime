@@ -102,7 +102,7 @@ impl PreemptiveThreads {
         let func_clone = func.clone();
         let fiber = unsafe {
             crate::runtime::fiber::make_fiber_unchecked(store, move |store| {
-                let mut store_ctx = StoreContextMut(store);
+                let store_ctx = StoreContextMut(store);
                 store_ctx.block_on(|mut cx| {
                     Box::pin(async move { func_clone.call_async(&mut cx, ()).await })
                 })?;
