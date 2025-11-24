@@ -82,6 +82,7 @@ impl PreemptiveThreads {
         store.epoch_deadline_callback(Box::new(move |ctx: StoreContextMut<'_, T>| {
             let opaque = ctx.0.as_store_opaque();
             opaque.preemptive_threads_mut().on_epoch_tick();
+            // Always request a yield to trigger stack-switching.
             Ok(UpdateDeadline::Yield(timeslice))
         }));
         self.epoch_installed = true;
@@ -102,11 +103,8 @@ impl PreemptiveThreads {
         let func_clone = func.clone();
         let fiber = unsafe {
             crate::runtime::fiber::make_fiber_unchecked(store, move |store| {
-                let store_ctx = StoreContextMut(store);
-                store_ctx.block_on(|mut cx| {
-                    Box::pin(async move { func_clone.call_async(&mut cx, ()).await })
-                })?;
-                Ok(())
+                let mut store_ctx = StoreContextMut(store);
+                store_ctx.block_on(|mut cx| Box::pin(async move { func_clone.call_async(&mut cx, ()).await }))?
             })?
         };
 
