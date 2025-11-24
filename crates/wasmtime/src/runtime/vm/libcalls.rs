@@ -1241,7 +1241,12 @@ fn memory_atomic_wait64(
 fn out_of_gas(store: &mut dyn VMStore, _instance: InstanceId) -> Result<()> {
     block_on!(store, async |store| {
         if !store.refuel() {
-            return Err(Trap::OutOfFuel.into());
+            if store.preemptive_enabled() {
+                log::trace!("preemptive: refuel depleted; resetting fuel");
+                store.set_fuel(u64::MAX)?;
+            } else {
+                return Err(Trap::OutOfFuel.into());
+            }
         }
         #[cfg(feature = "async")]
         if store.fuel_yield_interval.is_some() {

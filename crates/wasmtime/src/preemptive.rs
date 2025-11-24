@@ -50,10 +50,6 @@ impl PreemptiveThreads {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.threads.is_empty()
-    }
-
     fn enqueue(&mut self, id: u32) {
         if self.enqueued.insert(id) {
             self.run_queue.push_back(id);
@@ -109,6 +105,7 @@ impl PreemptiveThreads {
         let mut cx = Context::from_waker(&waker);
 
         let slice = self.timeslice.max(1);
+        eprintln!("[preempt][fuel] configuring slice={slice}");
         store.fuel_async_yield_interval(Some(slice))?;
         store.set_fuel(u64::MAX)?;
 

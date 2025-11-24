@@ -746,7 +746,7 @@ impl<T> Store<T> {
             #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
             // default fuel slice for preemptive scheduler; tuned for frequent
             // user-level switches.
-            preemptive_threads: crate::preemptive::PreemptiveThreads::new(1_000),
+            preemptive_threads: crate::preemptive::PreemptiveThreads::new(200),
             fuel_reserve: 0,
             fuel_yield_interval: None,
             store_data,
