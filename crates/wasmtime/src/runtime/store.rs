@@ -1677,7 +1677,24 @@ impl StoreOpaque {
             return Ok(());
         }
         if !self.async_state.has_current_context() {
-            eprintln!("[preempt][yield] skipped: no current async context");
+            // Try to use the in-flight BlockingContext if we're inside
+            // `with_blocking` (e.g. fuel out-of-gas path).
+            let mut suspended = false;
+            crate::runtime::fiber::with_current_blocking(|maybe| {
+                if let Some(mut cx) = maybe {
+                    eprintln!("[preempt][yield] using current blocking ctx to suspend");
+                    suspended = unsafe {
+                        cx.as_mut()
+                            .suspend(crate::runtime::fiber::StoreFiberYield::ReleaseStore)
+                            .is_ok()
+                    };
+                }
+            });
+            if suspended {
+                eprintln!("[preempt][yield] resumed fiber after suspension (blocking ctx)");
+            } else {
+                eprintln!("[preempt][yield] skipped: no current async context");
+            }
             return Ok(());
         }
         let (suspend_present, cx_present) = self.async_state.debug_flags();

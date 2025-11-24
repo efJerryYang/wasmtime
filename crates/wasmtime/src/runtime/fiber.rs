@@ -4,6 +4,7 @@ use crate::vm::mpk::{self, ProtectionMask};
 use crate::vm::{AlwaysMut, AsyncWasmCallState};
 use crate::{Engine, StoreContextMut};
 use anyhow::{Result, anyhow};
+use core::cell::Cell;
 use core::mem;
 use core::ops::Range;
 use core::pin::Pin;
@@ -126,6 +127,26 @@ impl AsyncState {
     }
 }
 
+thread_local! {
+    static CURRENT_BLOCKING: Cell<*mut BlockingContext<'static, 'static>> =
+        Cell::new(ptr::null_mut());
+}
+
+/// Expose the currently active `BlockingContext`, if any.
+pub(crate) fn with_current_blocking<R>(
+    f: impl FnOnce(Option<NonNull<BlockingContext<'static, 'static>>>) -> R,
+) -> R {
+    CURRENT_BLOCKING.with(|slot| {
+        let ptr = slot.get();
+        if ptr.is_null() {
+            f(None)
+        } else {
+            // SAFETY: lifetime is bounded by surrounding `with_blocking`.
+            f(Some(unsafe { NonNull::new_unchecked(ptr) }))
+        }
+    })
+}
+
 /// A helper structure used to block a fiber.
 ///
 /// This is acquired via either `StoreContextMut::with_blocking` or
@@ -217,7 +238,13 @@ impl<'a, 'b> BlockingContext<'a, 'b> {
             cx: BlockingContext { future_cx, suspend },
         };
 
-        return f(&mut reset.store, &mut reset.cx);
+        // Expose the current blocking context for nested suspend requests.
+        let prev = CURRENT_BLOCKING.with(|slot| {
+            slot.replace(&mut reset.cx as *mut _ as *mut BlockingContext<'static, 'static>)
+        });
+        let result = f(&mut reset.store, &mut reset.cx);
+        CURRENT_BLOCKING.with(|slot| slot.set(prev));
+        return result;
 
         struct ResetBlockingContext<'a, 'b, S: AsStoreOpaque> {
             store: &'a mut S,
