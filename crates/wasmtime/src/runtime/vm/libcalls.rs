@@ -1245,7 +1245,11 @@ fn out_of_gas(store: &mut dyn VMStore, _instance: InstanceId) -> Result<()> {
         }
         #[cfg(feature = "async")]
         if store.fuel_yield_interval.is_some() {
-            crate::runtime::vm::Yield::new().await;
+            if store.preemptive_enabled() {
+                store.preemptive_yield().await?;
+            } else {
+                crate::runtime::vm::Yield::new().await;
+            }
         }
         Ok(())
     })?
