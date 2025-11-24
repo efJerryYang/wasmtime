@@ -388,6 +388,11 @@ mod runtime;
 #[cfg(feature = "runtime")]
 pub use runtime::*;
 
+#[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+mod preemptive;
+#[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+pub use preemptive::WasmThreadHandle;
+
 #[cfg(any(feature = "cranelift", feature = "winch"))]
 mod compile;
 #[cfg(any(feature = "cranelift", feature = "winch"))]
