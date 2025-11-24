@@ -16,7 +16,10 @@ fn main() -> Result<()> {
     config.async_support(true);
     config.wasm_threads(true);
     config.wasm_stack_switching(true);
-    config.epoch_interruption(true);
+    // Epoch interruption is enabled by default in Wasmtime but here we rely on
+    // fuel-based timeslicing, so leave epoch disabled to avoid immediate traps
+    // unless the embedder explicitly opts in.
+    config.epoch_interruption(false);
     config.consume_fuel(true);
     config.wasm_preemptive_threads(true);
 

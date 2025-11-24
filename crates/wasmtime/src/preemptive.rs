@@ -108,6 +108,10 @@ impl PreemptiveThreads {
         eprintln!("[preempt][fuel] configuring slice={slice}");
         store.fuel_async_yield_interval(Some(slice))?;
         store.set_fuel(u64::MAX)?;
+        // Disable accidental epoch traps when epoch_interruption is enabled by
+        // giving wasm an effectively infinite deadline; preemption is driven by
+        // fuel in this scheduler.
+        store.set_epoch_deadline(u64::MAX);
 
         while !self.shutdown && start.elapsed() < duration {
             eprintln!("[preempt][run] loop tick");
