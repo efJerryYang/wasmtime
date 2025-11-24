@@ -131,8 +131,8 @@ impl PreemptiveThreads {
                         self.finish(id);
                     }
                     Ok(Err(err)) => {
-                        log::trace!("fiber {id} returned error: {err}");
-                        eprintln!("[preempt][run] fiber {id} returned error: {err}");
+                        log::trace!("fiber {id} returned error: {err:?}");
+                        eprintln!("[preempt][run] fiber {id} returned error: {err:?}");
                         self.finish(id);
                     }
                     Err(StoreFiberYield::KeepStore) | Err(StoreFiberYield::ReleaseStore) => {

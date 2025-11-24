@@ -1597,10 +1597,15 @@ fn refuel(
     yield_interval: Option<NonZeroU64>,
 ) -> bool {
     let fuel = get_fuel(*injected_fuel, *fuel_reserve);
+    eprintln!(
+        "[preempt][fuel] refuel: injected={} reserve={} interval={:?} fuel={}",
+        *injected_fuel, *fuel_reserve, yield_interval, fuel
+    );
     if fuel > 0 {
         set_fuel(injected_fuel, fuel_reserve, yield_interval, fuel);
         true
     } else {
+        eprintln!("[preempt][fuel] refuel: no fuel available, returning false");
         false
     }
 }
@@ -1623,6 +1628,10 @@ fn set_fuel(
     // Within the VM we increment to count fuel, so inject a negative amount. The VM will halt when
     // this counter is positive.
     *injected_fuel = -(injected as i64);
+    eprintln!(
+        "[preempt][fuel] set_fuel: new_fuel={} interval={} injected={} reserve={}",
+        new_fuel_amount, interval, *injected_fuel, *fuel_reserve
+    );
 }
 
 #[doc(hidden)]

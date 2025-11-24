@@ -1240,9 +1240,14 @@ fn memory_atomic_wait64(
 // Hook for when an instance runs out of fuel.
 fn out_of_gas(store: &mut dyn VMStore, _instance: InstanceId) -> Result<()> {
     block_on!(store, async |store| {
+        eprintln!(
+            "[preempt][fuel] out_of_gas: preemptive={} yield_interval={:?}",
+            store.preemptive_enabled(),
+            store.fuel_yield_interval
+        );
         if !store.refuel() {
             if store.preemptive_enabled() {
-                log::trace!("preemptive: refuel depleted; resetting fuel");
+                eprintln!("[preempt][fuel] refuel depleted; resetting fuel to u64::MAX");
                 store.set_fuel(u64::MAX)?;
             } else {
                 return Err(Trap::OutOfFuel.into());
