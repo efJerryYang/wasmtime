@@ -88,7 +88,9 @@ impl PreemptiveThreads {
             let stop = Arc::new(AtomicBool::new(false));
             let stop_clone = stop.clone();
             let engine = store.engine().clone();
-            let interval = Duration::from_millis(self.timeslice.max(1));
+            // Drive epoch updates aggressively so tiny timeslices (e.g. 1–5
+            // epochs) trigger preemption quickly.
+            let interval = Duration::from_micros(1);
             let handle = thread::spawn(move || {
                 while !stop_clone.load(Ordering::Relaxed) {
                     engine.increment_epoch();
