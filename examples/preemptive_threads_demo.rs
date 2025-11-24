@@ -17,6 +17,7 @@ fn main() -> Result<()> {
     config.wasm_threads(true);
     config.wasm_stack_switching(true);
     config.epoch_interruption(true);
+    config.consume_fuel(true);
     config.wasm_preemptive_threads(true);
 
     let engine = Engine::new(&config)?;

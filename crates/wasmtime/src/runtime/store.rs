@@ -744,7 +744,9 @@ impl<T> Store<T> {
             #[cfg(feature = "async")]
             async_state: Default::default(),
             #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
-            preemptive_threads: crate::preemptive::PreemptiveThreads::new(1),
+            // default fuel slice for preemptive scheduler; tuned for frequent
+            // user-level switches.
+            preemptive_threads: crate::preemptive::PreemptiveThreads::new(1_000),
             fuel_reserve: 0,
             fuel_yield_interval: None,
             store_data,
@@ -867,10 +869,9 @@ impl<T> Store<T> {
         if !self.inner.engine.config().wasm_preemptive_threads {
             return Ok(());
         }
-        let engine = self.inner.engine.clone();
         let threads: *mut crate::preemptive::PreemptiveThreads =
             self.inner.preemptive_threads_mut() as *mut _;
-        unsafe { (*threads).run_for(&mut self.inner, &engine, duration) }
+        unsafe { (*threads).run_for(&mut self.inner, duration) }
     }
 
     /// Stop all preemptively scheduled wasm threads and dispose their fibers.
@@ -1667,23 +1668,7 @@ impl StoreOpaque {
             return Ok(());
         }
         if !self.async_state.has_current_context() {
-            let mut suspended = false;
-            crate::runtime::fiber::with_current_blocking(|maybe| {
-                if let Some(mut cx) = maybe {
-                    eprintln!("[preempt][yield] using current blocking ctx to suspend");
-                    // SAFETY: the pointer is valid for the duration of this call.
-                    suspended = unsafe {
-                        cx.as_mut()
-                            .suspend(crate::runtime::fiber::StoreFiberYield::ReleaseStore)
-                            .is_ok()
-                    };
-                }
-            });
-            if suspended {
-                eprintln!("[preempt][yield] resumed fiber after suspension (blocking ctx)");
-            } else {
-                eprintln!("[preempt][yield] skipped: no current async context");
-            }
+            eprintln!("[preempt][yield] skipped: no current async context");
             return Ok(());
         }
         let (suspend_present, cx_present) = self.async_state.debug_flags();
