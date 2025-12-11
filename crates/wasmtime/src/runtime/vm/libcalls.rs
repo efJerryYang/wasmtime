@@ -1249,7 +1249,7 @@ fn out_of_gas(store: &mut dyn VMStore, _instance: InstanceId) -> Result<()> {
             if store.preemptive_enabled() {
                 eprintln!("[preempt][fuel] refuel depleted; resetting fuel to u64::MAX");
                 store.set_fuel(u64::MAX)?;
-            } else { 
+            } else {
                 return Err(Trap::OutOfFuel.into());
             }
         }
@@ -1271,6 +1271,35 @@ fn new_epoch(store: &mut dyn VMStore, _instance: InstanceId) -> Result<NextEpoch
     use crate::UpdateDeadline;
 
     let update_deadline = store.new_epoch_updated_deadline()?;
+    if store.preemptive_enabled() {
+        let delta = match update_deadline {
+            UpdateDeadline::Interrupt => return Err(Trap::Interrupt.into()),
+            UpdateDeadline::Continue(delta) => delta,
+            #[cfg(feature = "async")]
+            UpdateDeadline::Yield(delta) => {
+                assert!(
+                    store.async_support(),
+                    "cannot use `UpdateDeadline::Yield` without enabling \
+                     async support in the config"
+                );
+                store.preemptive_yield_blocking()?;
+                delta
+            }
+            #[cfg(feature = "async")]
+            UpdateDeadline::YieldCustom(delta, _future) => {
+                assert!(
+                    store.async_support(),
+                    "cannot use `UpdateDeadline::YieldCustom` without enabling \
+                     async support in the config"
+                );
+                store.preemptive_yield_blocking()?;
+                delta
+            }
+        };
+        store.set_epoch_deadline(delta);
+        return Ok(NextEpoch(store.get_epoch_deadline()));
+    }
+
     block_on!(store, async move |store| {
         let delta = match update_deadline {
             UpdateDeadline::Interrupt => return Err(Trap::Interrupt.into()),
@@ -1288,25 +1317,16 @@ fn new_epoch(store: &mut dyn VMStore, _instance: InstanceId) -> Result<NextEpoch
                     "cannot use `UpdateDeadline::Yield` without enabling \
                      async support in the config"
                 );
-                if store.preemptive_enabled() {
-                    store.preemptive_yield().await?;
-                } else {
-                    crate::runtime::vm::Yield::new().await;
-                }
+                crate::runtime::vm::Yield::new().await;
                 delta
             }
             #[cfg(feature = "async")]
-            UpdateDeadline::YieldCustom(delta, future) => {
+            UpdateDeadline::YieldCustom(delta, _future) => {
                 assert!(
                     store.async_support(),
                     "cannot use `UpdateDeadline::YieldCustom` without enabling \
                      async support in the config"
                 );
-                if store.preemptive_enabled() {
-                    store.preemptive_yield().await?;
-                } else {
-                    future.await;
-                }
                 delta
             }
         };

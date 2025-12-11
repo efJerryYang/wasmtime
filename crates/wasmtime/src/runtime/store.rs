@@ -80,6 +80,8 @@
 use crate::DebugHandler;
 #[cfg(all(feature = "gc", feature = "debug"))]
 use crate::OwnedRooted;
+#[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+use crate::PreemptiveMode;
 use crate::RootSet;
 #[cfg(feature = "gc")]
 use crate::ThrownException;
@@ -747,7 +749,7 @@ impl<T> Store<T> {
             #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
             // default fuel slice for preemptive scheduler; tuned for frequent
             // user-level switches.
-            preemptive_threads: PreemptiveThreads::new(100),
+            preemptive_threads: PreemptiveThreads::new(100, engine.config().preemptive_mode),
             fuel_reserve: 0,
             fuel_yield_interval: None,
             store_data,
@@ -837,29 +839,38 @@ impl<T> Store<T> {
 
     /// Spawn a wasm export as a preemptively scheduled wasm thread.
     ///
-    /// Currently only zero-argument, zero-result exports are supported. Requires
-    /// `Config::wasm_preemptive_threads(true)`.
+    /// Supports any parameter list expressible via [`WasmParams`] with a
+    /// `()` result. Requires `Config::wasm_preemptive_threads(true)`.
     #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
-    pub fn spawn_wasm_thread(
+    pub fn spawn_wasm_thread<P>(
         &mut self,
         instance: &crate::Instance,
         export: &str,
-        params: (),
+        params: P,
     ) -> Result<WasmThreadHandle>
     where
         T: Send + 'static,
+        P: crate::WasmParams + Send + Sync + 'static,
     {
         ensure!(
             self.inner.engine.config().wasm_preemptive_threads,
             "preemptive wasm threads require Config::wasm_preemptive_threads(true)"
         );
-        let func = instance.get_typed_func::<(), ()>(&mut *self, export)?;
+        match self.inner.engine.config().preemptive_mode {
+            PreemptiveMode::Fuel => ensure!(
+                self.inner.engine.tunables().consume_fuel,
+                "preemptive (fuel mode) requires Config::consume_fuel(true)"
+            ),
+            PreemptiveMode::Epoch => ensure!(
+                self.inner.engine.tunables().epoch_interruption,
+                "preemptive (epoch mode) requires Config::epoch_interruption(true)"
+            ),
+        }
+        let func = instance.get_typed_func::<P, ()>(&mut *self, export)?;
         let handle = {
             let threads: *mut PreemptiveThreads = self.inner.preemptive_threads_mut() as *mut _;
-            unsafe { (*threads).spawn(&mut self.inner, func, export.to_string())? }
+            unsafe { (*threads).spawn(&mut self.inner, func, export.to_string(), params)? }
         };
-        // params kept for future expansion; currently only zero-arg exports.
-        let _ = params;
         Ok(handle)
     }
 
@@ -868,6 +879,16 @@ impl<T> Store<T> {
     pub fn run_wasm_threads_for(&mut self, duration: std::time::Duration) -> Result<()> {
         if !self.inner.engine.config().wasm_preemptive_threads {
             return Ok(());
+        }
+        match self.inner.engine.config().preemptive_mode {
+            PreemptiveMode::Fuel => ensure!(
+                self.inner.engine.tunables().consume_fuel,
+                "preemptive (fuel mode) requires Config::consume_fuel(true)"
+            ),
+            PreemptiveMode::Epoch => ensure!(
+                self.inner.engine.tunables().epoch_interruption,
+                "preemptive (epoch mode) requires Config::epoch_interruption(true)"
+            ),
         }
         let threads: *mut PreemptiveThreads = self.inner.preemptive_threads_mut() as *mut _;
         unsafe { (*threads).run_for(&mut self.inner, duration) }
@@ -1704,6 +1725,17 @@ impl StoreOpaque {
             cx.suspend(crate::runtime::fiber::StoreFiberYield::ReleaseStore)
         })?;
         eprintln!("[preempt][yield] resumed fiber after suspension");
+        Ok(())
+    }
+
+    #[inline]
+    pub(crate) fn preemptive_yield_blocking(&mut self) -> Result<()> {
+        if !self.preemptive_enabled() {
+            return Ok(());
+        }
+        self.with_blocking(|_, cx| {
+            cx.suspend(crate::runtime::fiber::StoreFiberYield::ReleaseStore)
+        })?;
         Ok(())
     }
 

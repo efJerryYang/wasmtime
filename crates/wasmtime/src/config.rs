@@ -155,6 +155,8 @@ pub struct Config {
     pub(crate) stack_creator: Option<Arc<dyn RuntimeFiberStackCreator>>,
     pub(crate) async_support: bool,
     #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub(crate) preemptive_mode: PreemptiveMode,
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
     pub(crate) wasm_preemptive_threads: bool,
     pub(crate) module_version: ModuleVersionStrategy,
     pub(crate) parallel_compilation: bool,
@@ -167,6 +169,20 @@ pub struct Config {
     pub(crate) detect_host_feature: Option<fn(&str) -> Option<bool>>,
     pub(crate) x86_float_abi_ok: Option<bool>,
     pub(crate) shared_memory: bool,
+}
+
+/// Selects how preemptive wasm threads are time-sliced when
+/// [`Config::wasm_preemptive_threads`] is enabled.
+#[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreemptiveMode {
+    /// Use fuel-based metering to trigger yields. Requires
+    /// [`Config::consume_fuel(true)`](Config::consume_fuel).
+    Fuel,
+    /// Use epoch-based deadlines to trigger yields. Requires
+    /// [`Config::epoch_interruption(true)`](Config::epoch_interruption) and an
+    /// epoch tick source.
+    Epoch,
 }
 
 /// User-provided configuration for the compiler.
@@ -263,6 +279,8 @@ impl Config {
             #[cfg(feature = "async")]
             stack_creator: None,
             async_support: false,
+            #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+            preemptive_mode: PreemptiveMode::Fuel,
             #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
             wasm_preemptive_threads: false,
             module_version: ModuleVersionStrategy::default(),
@@ -1158,10 +1176,24 @@ impl Config {
     /// Enables experimental single-threaded preemptive scheduling of wasm
     /// threads using Wasmtime's stack-switching runtime.
     ///
-    /// This requires `async_support` and `epoch_interruption` to be enabled.
+    /// Requires `async_support`. The active [`PreemptiveMode`] determines the
+    /// instrumentation requirement:
+    /// - `PreemptiveMode::Fuel` requires [`consume_fuel`](Config::consume_fuel).
+    /// - `PreemptiveMode::Epoch` requires [`epoch_interruption`](Config::epoch_interruption)
+    ///   and a ticking source for [`Engine::increment_epoch`](crate::Engine::increment_epoch).
     #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
     pub fn wasm_preemptive_threads(&mut self, enable: bool) -> &mut Self {
         self.wasm_preemptive_threads = enable;
+        self
+    }
+
+    /// Selects whether preemptive scheduling uses fuel or epoch deadlines.
+    ///
+    /// Defaults to [`PreemptiveMode::Fuel`]. Does not flip the
+    /// `wasm_preemptive_threads` flag itself.
+    #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
+    pub fn wasm_preemptive_threads_mode(&mut self, mode: PreemptiveMode) -> &mut Self {
+        self.preemptive_mode = mode;
         self
     }
 

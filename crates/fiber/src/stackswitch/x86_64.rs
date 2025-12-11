@@ -10,9 +10,7 @@ use core::arch::naked_asm;
 
 #[inline(never)] // FIXME(rust-lang/rust#148307)
 pub(crate) unsafe extern "C" fn wasmtime_fiber_switch(top_of_stack: *mut u8) {
-    let name = with_debug_fiber_name(|n| {
-        n.map(|s| format!("[{s}]")).unwrap_or_default()
-    });
+    let name = with_debug_fiber_name(|n| n.map(|s| format!("[{s}]")).unwrap_or_default());
     eprintln!(
         "[preempt][fiber]{name} switching to fiber stack top={:#018x}",
         top_of_stack as usize,
