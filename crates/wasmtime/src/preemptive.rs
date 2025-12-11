@@ -53,10 +53,6 @@ impl PreemptiveThreads {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.threads.is_empty()
-    }
-
     fn enqueue(&mut self, id: u32) {
         if self.enqueued.insert(id) {
             self.run_queue.push_back(id);
