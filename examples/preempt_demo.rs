@@ -8,18 +8,35 @@
 use anyhow::Result;
 use futures::executor::block_on;
 use std::time::Duration;
-use wasmtime::{Caller, Config, Engine, Linker, Module, Store, WasmThreadHandle};
+use wasmtime::{
+    Caller, Config, Engine, Linker, Module, PreemptiveMode, Store, WasmThreadHandle,
+};
 
 struct HostState;
 
 fn main() -> Result<()> {
+    let mode = match std::env::args().nth(1).as_deref() {
+        Some("epoch") => PreemptiveMode::Epoch,
+        _ => PreemptiveMode::Fuel,
+    };
+
     let mut config = Config::new();
     config.async_support(true);
     config.wasm_threads(true);
     config.wasm_stack_switching(true);
-    // Preemption is driven by fuel; avoid epoch traps.
-    config.epoch_interruption(false);
-    config.consume_fuel(true);
+    config.wasm_preemptive_threads_mode(mode);
+    match mode {
+        PreemptiveMode::Fuel => {
+            // Preemption is driven by fuel; avoid epoch traps.
+            config.consume_fuel(true);
+            config.epoch_interruption(false);
+        }
+        PreemptiveMode::Epoch => {
+            // Epoch-based preemption; no fuel instrumentation needed here.
+            config.consume_fuel(false);
+            config.epoch_interruption(true);
+        }
+    }
     config.wasm_preemptive_threads(true);
 
     let engine = Engine::new(&config)?;
