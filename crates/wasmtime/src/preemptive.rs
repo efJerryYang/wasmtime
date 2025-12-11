@@ -9,17 +9,18 @@
 
 #![cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
 
-use crate::prelude::*;
-use crate::runtime::fiber::{resume_fiber, StoreFiber, StoreFiberYield};
-use crate::runtime::store::AsStoreOpaque;
 use crate::StoreContextMut;
 use crate::TypedFunc;
+use crate::prelude::*;
+use crate::runtime::fiber::{StoreFiber, StoreFiberYield, resume_fiber};
+use crate::runtime::store::AsStoreOpaque;
 use core::mem;
+use futures::task::noop_waker;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ptr::NonNull;
 use std::task::Context;
 use std::time::{Duration, Instant};
-use futures::task::noop_waker;
+use wasmtime_fiber::set_debug_fiber_name;
 
 /// Opaque handle returned to the embedder for spawned wasm threads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +34,7 @@ pub(crate) struct PreemptiveThreads {
     enqueued: HashSet<u32>,
     current: Option<u32>,
     next_id: u32,
+    names: HashMap<u32, String>,
     timeslice: u64,
     shutdown: bool,
 }
@@ -46,6 +48,7 @@ impl PreemptiveThreads {
             enqueued: HashSet::new(),
             current: None,
             next_id: 0,
+            names: HashMap::new(),
             shutdown: false,
         }
     }
@@ -106,6 +109,7 @@ impl PreemptiveThreads {
         &mut self,
         store: &mut crate::store::StoreInner<T>,
         func: TypedFunc<(), ()>,
+        name: String,
     ) -> Result<WasmThreadHandle> {
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1);
@@ -126,6 +130,7 @@ impl PreemptiveThreads {
         };
 
         self.enqueue(id);
+        self.names.insert(id, name);
         self.threads.insert(id, fiber);
         Ok(WasmThreadHandle { id })
     }
@@ -156,11 +161,9 @@ impl PreemptiveThreads {
             {
                 let fiber = self.threads.get_mut(&id).unwrap();
                 let cx_static: &mut Context<'static> = unsafe { mem::transmute(&mut cx) };
-                match resume_fiber(
-                    store.as_store_opaque(),
-                    fiber,
-                    Ok(NonNull::from(cx_static)),
-                ) {
+                let debug_name = self.names.get(&id).map(|s| s.as_str());
+                set_debug_fiber_name(debug_name);
+                match resume_fiber(store.as_store_opaque(), fiber, Ok(NonNull::from(cx_static))) {
                     Ok(Ok(())) => {
                         eprintln!("[preempt][run] fiber {id} completed");
                         self.finish(id);
@@ -175,6 +178,7 @@ impl PreemptiveThreads {
                         self.enqueue(id);
                     }
                 }
+                set_debug_fiber_name(None);
             }
 
             self.current = None;
@@ -192,11 +196,13 @@ impl PreemptiveThreads {
         self.run_queue.clear();
         self.enqueued.clear();
         self.current = None;
+        self.names.clear();
     }
 
     fn finish(&mut self, id: u32) {
         self.enqueued.remove(&id);
         self.threads.remove(&id);
+        self.names.remove(&id);
         if self.current == Some(id) {
             self.current = None;
         }

@@ -90,6 +90,7 @@ use crate::component::concurrent;
 #[cfg(feature = "async")]
 use crate::fiber;
 use crate::module::RegisteredModuleId;
+use crate::preemptive::{PreemptiveThreads, WasmThreadHandle};
 use crate::prelude::*;
 #[cfg(feature = "gc")]
 use crate::runtime::vm::GcRootsList;
@@ -107,9 +108,8 @@ use crate::{Engine, Module, Val, ValRaw, module::ModuleRegistry};
 #[cfg(feature = "gc")]
 use crate::{ExnRef, Rooted};
 use crate::{Global, Instance, Table, Uninhabited};
-use crate::preemptive::{PreemptiveThreads, WasmThreadHandle};
-use anyhow::ensure;
 use alloc::sync::Arc;
+use anyhow::ensure;
 use core::fmt;
 use core::marker;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
@@ -855,9 +855,8 @@ impl<T> Store<T> {
         );
         let func = instance.get_typed_func::<(), ()>(&mut *self, export)?;
         let handle = {
-            let threads: *mut PreemptiveThreads =
-                self.inner.preemptive_threads_mut() as *mut _;
-            unsafe { (*threads).spawn(&mut self.inner, func)? }
+            let threads: *mut PreemptiveThreads = self.inner.preemptive_threads_mut() as *mut _;
+            unsafe { (*threads).spawn(&mut self.inner, func, export.to_string())? }
         };
         // params kept for future expansion; currently only zero-arg exports.
         let _ = params;
@@ -870,8 +869,7 @@ impl<T> Store<T> {
         if !self.inner.engine.config().wasm_preemptive_threads {
             return Ok(());
         }
-        let threads: *mut PreemptiveThreads =
-            self.inner.preemptive_threads_mut() as *mut _;
+        let threads: *mut PreemptiveThreads = self.inner.preemptive_threads_mut() as *mut _;
         unsafe { (*threads).run_for(&mut self.inner, duration) }
     }
 
@@ -881,8 +879,7 @@ impl<T> Store<T> {
         if !self.inner.engine.config().wasm_preemptive_threads {
             return Ok(());
         }
-        let threads: *mut PreemptiveThreads =
-            self.inner.preemptive_threads_mut() as *mut _;
+        let threads: *mut PreemptiveThreads = self.inner.preemptive_threads_mut() as *mut _;
         unsafe {
             (*threads).shutdown(&mut self.inner);
         }

@@ -13,10 +13,13 @@ extern crate std;
 extern crate alloc;
 
 use alloc::boxed::Box;
+use alloc::string::String;
 use anyhow::Error;
 use core::cell::Cell;
 use core::marker::PhantomData;
 use core::ops::Range;
+#[cfg(feature = "std")]
+use std::cell::RefCell;
 
 cfg_if::cfg_if! {
     if #[cfg(not(feature = "std"))] {
@@ -137,6 +140,35 @@ pub struct Fiber<'a, Resume, Yield, Return> {
 pub struct Suspend<Resume, Yield, Return> {
     inner: imp::Suspend,
     _phantom: PhantomData<(Resume, Yield, Return)>,
+}
+
+// Debug helpers to annotate fibers with human-friendly labels when std is
+// available (used by Wasmtime preemptive thread demos).
+#[cfg(feature = "std")]
+thread_local! {
+    static DEBUG_FIBER_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Set a per-thread debug name for the currently running fiber.
+#[cfg(feature = "std")]
+pub fn set_debug_fiber_name(name: Option<&str>) {
+    use std::string::ToString;
+
+    DEBUG_FIBER_NAME.with(|slot| *slot.borrow_mut() = name.map(|s| s.to_string()));
+}
+
+/// Access the current fiber debug name, if any.
+#[cfg(feature = "std")]
+pub(crate) fn with_debug_fiber_name<R>(f: impl FnOnce(Option<&str>) -> R) -> R {
+    DEBUG_FIBER_NAME.with(|slot| f(slot.borrow().as_deref()))
+}
+
+#[cfg(not(feature = "std"))]
+pub fn set_debug_fiber_name(_name: Option<&str>) {}
+
+#[cfg(not(feature = "std"))]
+pub(crate) fn with_debug_fiber_name<R>(f: impl FnOnce(Option<&str>) -> R) -> R {
+    f(None)
 }
 
 /// A structure that is stored on a stack frame of a call to `Fiber::resume`.

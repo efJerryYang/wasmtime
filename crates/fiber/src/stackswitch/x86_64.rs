@@ -5,13 +5,17 @@
 // all the other bits. Documentation tries to reference various bits here and
 // there but try to make sure to read over everything before tweaking things!
 
+use crate::with_debug_fiber_name;
 use core::arch::naked_asm;
 
 #[inline(never)] // FIXME(rust-lang/rust#148307)
 pub(crate) unsafe extern "C" fn wasmtime_fiber_switch(top_of_stack: *mut u8) {
+    let name = with_debug_fiber_name(|n| {
+        n.map(|s| format!("[{s}]")).unwrap_or_default()
+    });
     eprintln!(
-        "[POC][fiber] switching to fiber stack top = {:p}",
-        top_of_stack
+        "[preempt][fiber]{name} switching to fiber stack top={:#018x}",
+        top_of_stack as usize,
     );
     unsafe { wasmtime_fiber_switch_(top_of_stack) }
 }
