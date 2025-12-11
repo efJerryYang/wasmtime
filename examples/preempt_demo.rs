@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     config.wasm_preemptive_threads(true);
 
     let engine = Engine::new(&config)?;
-    let wat_src = include_str!("preemptive_threads_demo_slow.wat");
+    let wat_src = include_str!("preempt_demo.wat");
     let wasm = wat::parse_str(wat_src)?;
     let module = Module::new(&engine, &wasm)?;
 
