@@ -747,9 +747,15 @@ impl<T> Store<T> {
             #[cfg(feature = "async")]
             async_state: Default::default(),
             #[cfg(all(feature = "runtime", feature = "async", target_has_atomic = "64"))]
-            // default fuel slice for preemptive scheduler; tuned for frequent
-            // user-level switches.
-            preemptive_threads: PreemptiveThreads::new(100, engine.config().preemptive_mode),
+            // default slice: slower for fuel to reduce churn, faster for epoch
+            // to keep deadline checks responsive.
+            preemptive_threads: PreemptiveThreads::new(
+                match engine.config().preemptive_mode {
+                    crate::PreemptiveMode::Fuel => 500,
+                    crate::PreemptiveMode::Epoch => 100,
+                },
+                engine.config().preemptive_mode,
+            ),
             fuel_reserve: 0,
             fuel_yield_interval: None,
             store_data,
